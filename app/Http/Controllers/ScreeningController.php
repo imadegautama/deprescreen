@@ -6,6 +6,7 @@ use App\Models\Answer;
 use App\Models\ScreeningSession;
 use App\Models\Symptom;
 use App\Models\Threshold;
+use App\Services\AdviceGenerationService;
 use App\Services\DepressionExpertSystem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,10 +16,14 @@ use Inertia\Inertia;
 class ScreeningController extends Controller
 {
     protected DepressionExpertSystem $expertSystem;
+    protected AdviceGenerationService $adviceService;
 
-    public function __construct(DepressionExpertSystem $expertSystem)
-    {
+    public function __construct(
+        DepressionExpertSystem $expertSystem,
+        AdviceGenerationService $adviceService
+    ) {
         $this->expertSystem = $expertSystem;
+        $this->adviceService = $adviceService;
     }
 
     /**
@@ -173,6 +178,24 @@ class ScreeningController extends Controller
             'risk_score' => $riskScore,
         ];
 
+        // Generate AI advice
+        $aiAdvice = null;
+        try {
+            $aiAdvice = $this->adviceService->generateAdvice($session);
+        } catch (\Exception $e) {
+            $errorMsg = $e->getMessage();
+
+            // Log with helpful info
+            Log::warning('AI Advice generation failed, using fallback', [
+                'session_id' => $sessionId,
+                'error' => $errorMsg,
+                'hint' => str_contains($errorMsg, '403')
+                    ? 'API Key valid but Generative AI API not enabled in Google Cloud Console'
+                    : 'Check GEMINI_API_KEY in .env or network connection',
+            ]);
+
+            $aiAdvice = null;  // Will use database advice as fallback
+        }
 
         return Inertia::render('Screening/Result', [
             'session' => $session,
@@ -203,6 +226,7 @@ class ScreeningController extends Controller
             'activeSymptoms' => $activeSymptoms,
             'stats' => $stats,
             'advice' => $this->getAdvice($session, $threshold),
+            'aiAdvice' => $aiAdvice,
             'symptomAnalysis' => $symbolAnalysis,
             'recommendations' => $recommendations,
         ]);

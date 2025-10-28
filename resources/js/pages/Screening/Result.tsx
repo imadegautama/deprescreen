@@ -8,9 +8,141 @@ interface Props {
     activeSymptoms: Answer[];
     stats: ScreeningStats;
     advice: string;
+    aiAdvice?: string | null;
     symptomAnalysis: Record<string, unknown>;
     recommendations: string[];
 }
+
+// Helper function untuk render formatted content dengan support untuk markdown-like formatting
+const renderFormattedContent = (text: string): React.ReactNode[] => {
+    const elements: React.ReactNode[] = [];
+    const lines = text.split('\n');
+    let currentList: string[] = [];
+    let listType: 'bullet' | 'number' = 'bullet';
+    let listKey = 0;
+
+    const flushList = () => {
+        if (currentList.length > 0) {
+            if (listType === 'bullet') {
+                elements.push(
+                    <ul key={`list-${listKey}`} className="list-disc list-inside space-y-1 pl-2">
+                        {currentList.map((item, idx) => (
+                            <li key={idx} className="text-purple-800">
+                                {item.replace(/^[-•*]\s*/, '').trim()}
+                            </li>
+                        ))}
+                    </ul>
+                );
+            } else {
+                elements.push(
+                    <ol key={`list-${listKey}`} className="list-decimal list-inside space-y-1 pl-2">
+                        {currentList.map((item, idx) => (
+                            <li key={idx} className="text-purple-800">
+                                {item.replace(/^\d+\.\s*/, '').trim()}
+                            </li>
+                        ))}
+                    </ol>
+                );
+            }
+            currentList = [];
+            listKey++;
+        }
+    };
+
+    lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+            // Empty line - flush list if any and add spacing
+            flushList();
+            if (elements.length > 0 && elements[elements.length - 1] !== '') {
+                elements.push(<div key={`spacer-${idx}`} className="h-1" />);
+            }
+            return;
+        }
+
+        // Check if it's a heading (## or ### or #)
+        const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (headingMatch) {
+            flushList();
+            const level = headingMatch[1].length;
+            const headingText = headingMatch[2];
+            const headingClass = level === 1 ? 'text-lg font-bold' : level === 2 ? 'text-base font-semibold' : 'font-medium';
+            elements.push(
+                <h4 key={`heading-${idx}`} className={`${headingClass} text-purple-900 mt-3 mb-2`}>
+                    {headingText}
+                </h4>
+            );
+            return;
+        }
+
+        // Check if it's a bullet point
+        const bulletMatch = trimmed.match(/^[-•*]\s+(.+)$/);
+        if (bulletMatch) {
+            if (currentList.length === 0) {
+                listType = 'bullet';
+            }
+            if (listType === 'bullet') {
+                currentList.push(bulletMatch[0]);
+            } else {
+                flushList();
+                listType = 'bullet';
+                currentList.push(bulletMatch[0]);
+            }
+            return;
+        }
+
+        // Check if it's a numbered list
+        const numberMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+        if (numberMatch) {
+            if (currentList.length === 0) {
+                listType = 'number';
+            }
+            if (listType === 'number') {
+                currentList.push(numberMatch[0]);
+            } else {
+                flushList();
+                listType = 'number';
+                currentList.push(numberMatch[0]);
+            }
+            return;
+        }
+
+        // Check if it's bold text (text in **bold**)
+        const boldMatch = trimmed.match(/\*\*(.+?)\*\*/g);
+        if (boldMatch) {
+            flushList();
+            const parts = trimmed.split(/(\*\*.+?\*\*)/);
+            const content = parts.map((part, pidx) => {
+                if (part.match(/^\*\*.+\*\*$/)) {
+                    return <strong key={pidx}>{part.replace(/\*\*/g, '')}</strong>;
+                }
+                return part;
+            });
+            elements.push(
+                <p key={`paragraph-${idx}`} className="text-purple-800 leading-relaxed">
+                    {content}
+                </p>
+            );
+            return;
+        }
+
+        // Regular paragraph
+        flushList();
+        if (trimmed.length > 0) {
+            elements.push(
+                <p key={`paragraph-${idx}`} className="text-purple-800 leading-relaxed whitespace-pre-wrap">
+                    {trimmed}
+                </p>
+            );
+        }
+    });
+
+    // Flush any remaining list
+    flushList();
+
+    return elements;
+};
 
 const getLevelBadgeColor = (level: string) => {
     const colors = {
@@ -36,6 +168,7 @@ export default function ScreeningResult({
     activeSymptoms,
     stats,
     advice,
+    aiAdvice,
     recommendations,
 }: Props) {
     return (
@@ -128,9 +261,44 @@ export default function ScreeningResult({
                     {!stats.has_crisis && (
                         <div className="mb-8 p-6 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg">
                             <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                                <span>💡</span> Rekomendasi
+                                <span>💡</span> Rekomendasi Umum
                             </h3>
                             <p className="text-blue-800 leading-relaxed">{advice}</p>
+                        </div>
+                    )}
+
+                    {/* AI Personalized Advice */}
+                    {aiAdvice && !stats.has_crisis && (
+                        <div className="mb-8 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 border-l-4 border-purple-500 rounded-r-lg shadow-md">
+                            <h3 className="font-semibold text-purple-900 mb-4 flex items-center gap-2 text-lg">
+                                <span>🤖</span> Saran Personal dari AI
+                            </h3>
+                            <div className="text-purple-800 leading-relaxed space-y-4">
+                                {renderFormattedContent(aiAdvice)}
+                            </div>
+                            <p className="text-xs text-purple-600 mt-6 italic">
+                                💬 Saran ini dihasilkan oleh AI berdasarkan jawaban Anda dan tidak menggantikan konsultasi profesional.
+                            </p>
+                        </div>
+                    )}
+
+                    {aiAdvice && stats.has_crisis && (
+                        <div className="mb-8 p-6 bg-red-50 border-l-4 border-red-500 rounded-r-lg shadow-md">
+                            <h3 className="font-semibold text-red-900 mb-4 flex items-center gap-2 text-lg">
+                                <span>🤖</span> Informasi Tambahan dari AI
+                            </h3>
+                            <div className="text-red-800 leading-relaxed space-y-3">
+                                {aiAdvice.split('\n').map((paragraph, idx) => (
+                                    paragraph.trim() && (
+                                        <p key={idx} className="text-red-800 leading-relaxed whitespace-pre-wrap">
+                                            {paragraph}
+                                        </p>
+                                    )
+                                ))}
+                            </div>
+                            <p className="text-xs text-red-600 mt-6 italic font-semibold">
+                                💬 Informasi ini dihasilkan oleh AI. SEGERA HUBUNGI LAYANAN DARURAT UNTUK BANTUAN PROFESIONAL.
+                            </p>
                         </div>
                     )}
 
