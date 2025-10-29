@@ -3,6 +3,7 @@ FROM php:8.3-fpm-alpine
 # System deps (runtime)
 RUN apk add --no-cache \
     git curl bash zip unzip shadow supervisor \
+    nano vim \
     icu-dev libzip-dev oniguruma-dev \
     libpng-dev libjpeg-turbo-dev libwebp-dev libxml2-dev
 
