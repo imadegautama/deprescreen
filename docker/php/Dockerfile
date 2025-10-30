@@ -54,9 +54,12 @@ COPY --from=php-setup /app/bootstrap ./bootstrap
 # Copy php.ini & app config untuk artisan
 COPY docker/php/php.ini /usr/local/etc/php/php.ini
 
-# Install PHP extensions (same as final stage)
-RUN docker-php-ext-configure gd --with-jpeg --with-webp \
-    && docker-php-ext-install gd intl zip pdo_mysql bcmath pcntl opcache
+# Copy pre-built PHP extensions dari Stage 1 (sudah compiled)
+# Ini adalah .so files dari Stage 1 yang sudah punya semua extensions
+COPY --from=php-setup /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+
+# Copy PHP config files untuk extensions
+COPY --from=php-setup /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
 
 # Build frontend assets
 # wayfinder plugin can now call php artisan (PHP + extensions available)

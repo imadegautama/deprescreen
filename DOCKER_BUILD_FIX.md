@@ -100,7 +100,30 @@ Expected flow:
 TOTAL: ~1-2 minutes ✓
 ```
 
-## ✨ Why This Works Now
+## ✨ Final Solution (Optimized)
+
+**Best Practice**: Don't rebuild extensions in Stage 2 — copy pre-built extensions from Stage 1.
+
+```dockerfile
+# Stage 1: Build extensions once
+FROM php:8.3-fpm-alpine AS php-setup
+RUN docker-php-ext-install gd intl zip ...
+→ Creates: /usr/local/lib/php/extensions/*.so
+
+# Stage 2: Copy extensions (no rebuild)
+FROM php:8.3-fpm-alpine AS frontend-builder
+COPY --from=php-setup /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+COPY --from=php-setup /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
+→ Uses: Pre-built extensions from Stage 1 ✓
+```
+
+This approach:
+
+- ✅ Avoids duplicate extension compilation
+- ✅ Faster build (copies instead of rebuilds)
+- ✅ No missing dependencies (zlib, etc)
+- ✅ Smaller intermediate images
+- ✅ All extensions available for php artisan
 
 1. **Stage 1** builds a complete PHP environment with ALL extensions needed
 2. **Stage 2** inherits that complete environment from Stage 1
