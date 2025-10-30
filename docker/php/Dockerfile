@@ -23,14 +23,18 @@ COPY . .
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader
 
 # ===== STAGE 2: Frontend Build =====
-FROM node:20-alpine AS frontend-builder
+# Use PHP container yang sudah punya semua extensions
+FROM php:8.3-fpm-alpine AS frontend-builder
 
 WORKDIR /app
+
+# Install Node.js (untuk npm run build)
+RUN apk add --no-cache nodejs npm git
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install npm dependencies
 RUN npm ci
 
 # Copy frontend source
@@ -40,16 +44,23 @@ COPY config ./config
 COPY app ./app
 COPY routes ./routes
 
-# Copy PHP files (composer:generate may need it)
+# Copy pre-built vendor dari Stage 1 (dengan semua PHP extensions)
 COPY --from=php-setup /app/vendor ./vendor
-COPY --from=php-setup /app/bootstrap ./bootstrap
-COPY artisan ./
 
-# Build frontend assets (production build)
-# wayfinder plugin may call php artisan — ensure php available
-RUN apk add --no-cache php php-cli php-json php-mbstring \
-    && npm run build \
-    && apk del php php-cli php-json php-mbstring
+# Copy artisan & bootstrap dari Stage 1
+COPY --from=php-setup /app/artisan ./
+COPY --from=php-setup /app/bootstrap ./bootstrap
+
+# Copy php.ini & app config untuk artisan
+COPY docker/php/php.ini /usr/local/etc/php/php.ini
+
+# Install PHP extensions (same as final stage)
+RUN docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install gd intl zip pdo_mysql bcmath pcntl opcache
+
+# Build frontend assets
+# wayfinder plugin can now call php artisan (PHP + extensions available)
+RUN npm run build
 
 # ===== STAGE 3: PHP Runtime =====
 FROM php:8.3-fpm-alpine
