@@ -3,8 +3,15 @@ FROM php:8.3-fpm-alpine AS php-setup
 
 WORKDIR /app
 
-# Install only composer & basic tools needed for composer/artisan
-RUN apk add --no-cache git curl bash unzip
+# Install system dependencies for PHP extensions
+RUN apk add --no-cache \
+    git curl bash unzip \
+    icu-dev libzip-dev oniguruma-dev \
+    libpng-dev libjpeg-turbo-dev libwebp-dev libxml2-dev
+
+# Install PHP extensions (same as Stage 3)
+RUN docker-php-ext-configure gd --with-jpeg --with-webp \
+    && docker-php-ext-install gd intl zip pdo_mysql bcmath pcntl opcache
 
 # Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -12,7 +19,7 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Copy app source
 COPY . .
 
-# Install PHP dependencies
+# Install PHP dependencies (now with all extensions available)
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader
 
 # ===== STAGE 2: Frontend Build =====
